@@ -17,10 +17,9 @@
 
 package org.apache.spark.sql
 
-import org.apache.spark.annotation.InterfaceStability
+import org.apache.spark.annotation.Stable
 import org.apache.spark.internal.config.{ConfigEntry, OptionalConfigEntry}
 import org.apache.spark.sql.internal.SQLConf
-
 
 /**
  * Runtime configuration interface for Spark. To access this, use `SparkSession.conf`.
@@ -29,7 +28,7 @@ import org.apache.spark.sql.internal.SQLConf
  *
  * @since 2.0.0
  */
-@InterfaceStability.Stable
+@Stable
 class RuntimeConfig private[sql](sqlConf: SQLConf = new SQLConf) {
 
   /**
@@ -131,6 +130,17 @@ class RuntimeConfig private[sql](sqlConf: SQLConf = new SQLConf) {
     requireNonStaticConf(key)
     sqlConf.unsetConf(key)
   }
+
+  /**
+   * Indicates whether the configuration property with the given key
+   * is modifiable in the current session.
+   *
+   * @return `true` if the configuration property is modifiable. For static SQL, Spark Core,
+   *         invalid (not existing) and other non-modifiable configuration properties,
+   *         the returned value is `false`.
+   * @since 2.4.0
+   */
+  def isModifiable(key: String): Boolean = sqlConf.isModifiable(key)
 
   /**
    * Returns whether a particular key is set.

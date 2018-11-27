@@ -51,6 +51,18 @@ class StringExpressionsSuite extends SparkFunSuite with ExpressionEvalHelper {
     checkEvaluation(Concat(strs.map(Literal.create(_, StringType))), strs.mkString, EmptyRow)
   }
 
+  test("SPARK-22771 Check Concat.checkInputDataTypes results") {
+    assert(Concat(Seq.empty[Expression]).checkInputDataTypes().isSuccess)
+    assert(Concat(Literal.create("a") :: Literal.create("b") :: Nil)
+      .checkInputDataTypes().isSuccess)
+    assert(Concat(Literal.create("a".getBytes) :: Literal.create("b".getBytes) :: Nil)
+      .checkInputDataTypes().isSuccess)
+    assert(Concat(Literal.create(1) :: Literal.create(2) :: Nil)
+      .checkInputDataTypes().isFailure)
+    assert(Concat(Literal.create("a") :: Literal.create("b".getBytes) :: Nil)
+      .checkInputDataTypes().isFailure)
+  }
+
   test("concat_ws") {
     def testConcatWs(expected: String, sep: String, inputs: Any*): Unit = {
       val inputExprs = inputs.map {
@@ -518,6 +530,14 @@ class StringExpressionsSuite extends SparkFunSuite with ExpressionEvalHelper {
       FormatString(Literal("aa%d%s"), 12, Literal.create(null, StringType)), "aa12null")
   }
 
+  test("SPARK-22603: FormatString should not generate codes beyond 64KB") {
+    val N = 4500
+    val args = (1 to N).map(i => Literal.create(i.toString, StringType))
+    val format = "%s" * N
+    val expected = (1 to N).map(i => i.toString).mkString
+    checkEvaluation(FormatString(Literal(format) +: args: _*), expected)
+  }
+
   test("INSTR") {
     val s1 = 'a.string.at(0)
     val s2 = 'b.string.at(1)
@@ -609,9 +629,9 @@ class StringExpressionsSuite extends SparkFunSuite with ExpressionEvalHelper {
   test("REVERSE") {
     val s = 'a.string.at(0)
     val row1 = create_row("abccc")
-    checkEvaluation(StringReverse(Literal("abccc")), "cccba", row1)
-    checkEvaluation(StringReverse(s), "cccba", row1)
-    checkEvaluation(StringReverse(Literal.create(null, StringType)), null, row1)
+    checkEvaluation(Reverse(Literal("abccc")), "cccba", row1)
+    checkEvaluation(Reverse(s), "cccba", row1)
+    checkEvaluation(Reverse(Literal.create(null, StringType)), null, row1)
   }
 
   test("SPACE") {
@@ -686,6 +706,30 @@ class StringExpressionsSuite extends SparkFunSuite with ExpressionEvalHelper {
       "15,159,339,180,002,773.2778")
     checkEvaluation(FormatNumber(Literal.create(null, IntegerType), Literal(3)), null)
     assert(FormatNumber(Literal.create(null, NullType), Literal(3)).resolved === false)
+
+    checkEvaluation(FormatNumber(Literal(12332.123456), Literal("##############.###")), "12332.123")
+    checkEvaluation(FormatNumber(Literal(12332.123456), Literal("##.###")), "12332.123")
+    checkEvaluation(FormatNumber(Literal(4.asInstanceOf[Byte]), Literal("##.####")), "4")
+    checkEvaluation(FormatNumber(Literal(4.asInstanceOf[Short]), Literal("##.####")), "4")
+    checkEvaluation(FormatNumber(Literal(4.0f), Literal("##.###")), "4")
+    checkEvaluation(FormatNumber(Literal(4), Literal("##.###")), "4")
+    checkEvaluation(FormatNumber(Literal(12831273.23481d),
+      Literal("###,###,###,###,###.###")), "12,831,273.235")
+    checkEvaluation(FormatNumber(Literal(12831273.83421d), Literal("")), "12,831,274")
+    checkEvaluation(FormatNumber(Literal(123123324123L), Literal("###,###,###,###,###.###")),
+      "123,123,324,123")
+    checkEvaluation(
+      FormatNumber(Literal(Decimal(123123324123L) * Decimal(123123.21234d)),
+        Literal("###,###,###,###,###.####")), "15,159,339,180,002,773.2778")
+    checkEvaluation(FormatNumber(Literal.create(null, IntegerType), Literal("##.###")), null)
+    assert(FormatNumber(Literal.create(null, NullType), Literal("##.###")).resolved === false)
+
+    checkEvaluation(FormatNumber(Literal(12332.123456), Literal("#,###,###,###,###,###,##0")),
+      "12,332")
+    checkEvaluation(FormatNumber(
+      Literal.create(null, IntegerType), Literal.create(null, StringType)), null)
+    checkEvaluation(FormatNumber(
+      Literal.create(null, IntegerType), Literal.create(null, IntegerType)), null)
   }
 
   test("find in set") {
@@ -736,7 +780,7 @@ class StringExpressionsSuite extends SparkFunSuite with ExpressionEvalHelper {
 
     // exceptional cases
     intercept[java.util.regex.PatternSyntaxException] {
-      evaluate(ParseUrl(Seq(Literal("http://spark.apache.org/path?"),
+      evaluateWithoutCodegen(ParseUrl(Seq(Literal("http://spark.apache.org/path?"),
         Literal("QUERY"), Literal("???"))))
     }
 

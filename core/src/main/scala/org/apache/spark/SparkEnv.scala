@@ -234,6 +234,10 @@ object SparkEnv extends Logging {
     }
 
     val securityManager = new SecurityManager(conf, ioEncryptionKey)
+    if (isDriver) {
+      securityManager.initializeAuth()
+    }
+
     ioEncryptionKey.foreach { _ =>
       if (!securityManager.isEncryptionEnabled()) {
         logWarning("I/O encryption enabled without RPC encryption: keys will be visible on the " +
@@ -257,7 +261,7 @@ object SparkEnv extends Logging {
       // SparkConf, then one taking no arguments
       try {
         cls.getConstructor(classOf[SparkConf], java.lang.Boolean.TYPE)
-          .newInstance(conf, new java.lang.Boolean(isDriver))
+          .newInstance(conf, java.lang.Boolean.valueOf(isDriver))
           .asInstanceOf[T]
       } catch {
         case _: NoSuchMethodException =>
